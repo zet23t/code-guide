@@ -322,6 +322,168 @@ int lua_IsMenuKeyPressed(lua_State*L)
     return 1;
 }
 
+#define TOUCHPOINT_PHASE_BEGIN 1
+#define TOUCHPOINT_PHASE_CONTACT 2
+#define TOUCHPOINT_PHASE_RELEASED 3
+#define TOUCHPOINT_PHASE_HOVER 4
+typedef struct TouchPoint
+{
+    Vector2 position;
+    Vector2 previousPosition;
+    Vector2 startPosition;
+    int phase;
+    int previousPhase;
+    int id;
+} TouchPoint;
+
+static TouchPoint _touchPoints[16];
+static int _touchPointCount;
+
+static TouchPoint *TouchPoint_getById(int id)
+{
+    for (int i=0;i<_touchPointCount;i++)
+    {
+        if (_touchPoints[i].id == id)
+        {
+            return &_touchPoints[i];
+        }
+    }
+
+    return NULL;
+}
+
+static void TouchPoint_update()
+{
+    for (int i=0;i<_touchPointCount;i++)
+    {
+        _touchPoints[i].previousPosition = _touchPoints[i].position;
+        _touchPoints[i].previousPhase = _touchPoints[i].phase;
+        _touchPoints[i].phase = 0;
+    }
+    
+    // for (int i=0;i<_touchPointCount;i++)
+    // {
+    //     TraceLog(LOG_INFO, "? touch[%d] %d: %d %d %d %d", i , _touchPoints[i].id, _touchPoints[i].phase, _touchPoints[i].previousPhase, (int)_touchPoints[i].position.x, (int)_touchPoints[i].position.y);
+    // }
+    int touchCount = GetTouchPointCount();
+    for (int i=0;i<touchCount;i++)
+    {
+        Vector2 pos = GetTouchPosition(i);
+        int touchId = GetTouchPointId(i);
+        TouchPoint *touch = TouchPoint_getById(touchId);
+        if (touch == NULL)
+        {
+            _touchPoints[_touchPointCount++] = (TouchPoint){
+                .id = touchId,
+                .phase = TOUCHPOINT_PHASE_BEGIN,
+                .position = pos,
+                .previousPhase = 0,
+                .startPosition = pos
+            };
+        }
+        else
+        {
+            touch->previousPhase = TOUCHPOINT_PHASE_CONTACT;
+            touch->position = pos;
+        }
+    }
+
+    TouchPoint *mouse = TouchPoint_getById(-123);
+    if (mouse == NULL)
+    {
+        _touchPoints[_touchPointCount++] = (TouchPoint) {
+            .id = -123,
+            .phase = TOUCHPOINT_PHASE_HOVER,
+            .position = GetMousePosition(),
+            .previousPosition = GetMousePosition(),
+            .startPosition = GetMousePosition()
+        };
+    }
+    else
+    {
+        mouse->position = GetMousePosition();
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        {
+            mouse->phase = TOUCHPOINT_PHASE_CONTACT;
+            if (mouse->previousPhase == TOUCHPOINT_PHASE_HOVER)
+            {
+                mouse->startPosition = mouse->position;
+            }
+        }
+        else
+        {
+            mouse->phase = (mouse->previousPhase == TOUCHPOINT_PHASE_CONTACT) 
+                ? TOUCHPOINT_PHASE_RELEASED
+                : TOUCHPOINT_PHASE_HOVER;
+        }
+    }
+
+    int record = 0;
+    for (int i=0;i<_touchPointCount;i++)
+    {
+        TouchPoint *touch = &_touchPoints[i];
+        if (touch->phase == 0 && touch->previousPhase == 0)
+        {
+            // remove
+            continue;
+        }
+        if (touch->phase == 0 && touch->previousPhase == TOUCHPOINT_PHASE_CONTACT)
+        {
+            touch->phase = TOUCHPOINT_PHASE_RELEASED;
+        }
+        _touchPoints[record++] = *touch;
+    }
+    _touchPointCount = record;
+
+    // for (int i=0;i<_touchPointCount;i++)
+    // {
+    //     TraceLog(LOG_INFO, "%d touch[%d] %d: %d %d %d %d", touchCount,i , _touchPoints[i].id, _touchPoints[i].phase, _touchPoints[i].previousPhase, (int)_touchPoints[i].position.x, (int)_touchPoints[i].position.y);
+    // }
+}
+
+static int lua_GetInputAreaStatus(lua_State *L)
+{
+    float x = (float)luaL_checknumber(L, 1);
+    float y = (float)luaL_checknumber(L, 2);
+    float w = (float)luaL_checknumber(L, 3);
+    float h = (float)luaL_checknumber(L, 4);
+    Rectangle rect = {x,y,w,h};
+    
+    for (int i=0;i<_touchPointCount;i++)
+    {
+        TouchPoint *touch = &_touchPoints[i];
+        if (CheckCollisionPointRec(touch->startPosition, rect))
+        {
+            if (CheckCollisionPointRec(touch->position, rect))
+            {
+                if (touch->phase == TOUCHPOINT_PHASE_RELEASED)
+                {
+                    lua_pushstring(L, "activated");
+                }
+                else if (touch->phase == TOUCHPOINT_PHASE_CONTACT ||touch->phase == TOUCHPOINT_PHASE_BEGIN)
+                {
+                    lua_pushstring(L, "pressed");
+                }
+                else if (touch->phase == TOUCHPOINT_PHASE_HOVER)
+                {
+                    lua_pushstring(L, "hover");
+                }
+                else
+                {
+                    lua_pushstring(L, "unknown");
+                }
+                return 1;
+            }
+        }
+        if (touch->phase == TOUCHPOINT_PHASE_HOVER && CheckCollisionPointRec(touch->position, rect))
+        {
+            lua_pushstring(L, "hover");
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void init_lua(lua_State *L)
 {
     luaL_openlibs(L);
@@ -350,6 +512,7 @@ void init_lua(lua_State *L)
         {"IsNextPagePressed", lua_IsNextPagePressed},
         {"IsPreviousPagePressed", lua_IsPreviousPagePressed},
         {"IsMenuKeyPressed", lua_IsMenuKeyPressed},
+        {"GetInputAreaStatus", lua_GetInputAreaStatus},
         {NULL, NULL}
     };
     lua_pushglobaltable(L);
@@ -421,6 +584,7 @@ int main(void)
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
         Resources_update();
+        TouchPoint_update();
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_RIGHT)) luaCurrentStepIndex++;
         if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_LEFT)) luaCurrentStepIndex--;
         if (IsKeyPressed(KEY_R)) luaCurrentStepIndex = 0;

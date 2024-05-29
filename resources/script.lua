@@ -708,6 +708,9 @@ local steps = {
 
             You can also open a menu by pressing
             <SPACE> to see a list of all chapters.
+
+            Alternatively you can use the mouse or touch
+            input on the bottom elements.
             ]], 355)
     },
     {
@@ -2905,14 +2908,30 @@ function draw(dt)
 
     guyUpdate(dt)
 
+    local closeMenu = showMenu and GetInputAreaStatus(0,0,GetScreenSize()) == "activated"
+    
     local w,h = GetScreenSize()
     local info_w = 400
     local info_h = #chapters * 20 + 80
     local info_y = showMenu and (h - info_h + 10) or (h - 30)
+    local menuStatus = GetInputAreaStatus((w-info_w) / 2-1, info_y-1, info_w+2, info_h+2)
+    local overMenu = menuStatus == "activated"
+    if closeMenu and not overMenu then
+        showMenu = false
+        info_y = (h - 30)
+    end
+    if not showMenu and overMenu then
+        showMenu = true
+        info_y = (h - info_h + 10)
+    end
     
     SetColor(0,0,0,255)
     DrawBubble((w-info_w) / 2-1, info_y-1, info_w+2, info_h+2, -1, 0,0)
-    SetColor(250,200,100,255)
+    if menuStatus == "hover" and not showMenu then
+        SetColor(250,230,100,255)
+    else
+        SetColor(250,200,100,255)
+    end
     DrawBubble((w-info_w) / 2, info_y, info_w, info_h, -1, 0,0)
     SetColor(0,0,0,255)
     local currentChapterText = ("Chapter %d: %s (%d / %d)"):
@@ -2926,10 +2945,16 @@ function draw(dt)
         for i=1,#chapters do
             local chapter = chapters[i]
             local y = info_y + 20 * i + 15
-            SetColor(0,0,0,255)
             local chapterText = ("%d: %s"):format(i-1, chapter.chapter)
-            DrawTextBoxAligned(chapterText, 20, (w-info_w) / 2 + 10, y, info_w, 30, 0, 0.5)
-            if IsNumberKeyPressed(i-1) then
+            local rx,ry,rw,rh = (w-info_w) / 2 + 10, y, info_w, 20
+            local status = GetInputAreaStatus(rx,ry,rw,rh)
+            if status == "hover" then
+                SetColor(20,50,200,255) 
+            else
+                SetColor(0,0,0,255)
+            end
+            DrawTextBoxAligned(chapterText, 20, rx,ry,rw,rh, 0, 0.5)
+            if IsNumberKeyPressed(i-1) or status == "activated" then
                 SetCurrentStepIndex(chapter.chapterOffset)
             end
         end
@@ -2939,5 +2964,31 @@ function draw(dt)
     if frame < 2 then
         guyPos.x = guyTarget.x
         guyPos.y = guyTarget.y
+    end
+
+
+    local function button(x,y,w,h, text)
+        local activated = false
+        local status = GetInputAreaStatus(x,y,w,h)
+        if status == "hover" then
+            SetColor(200,200,255,255)
+        elseif status == "pressed" then
+            SetColor(250, 200, 180, 255)
+        elseif status == "activated" then
+            SetColor(255,255,200,255)
+            activated = true
+        else
+            SetColor(180,180,220,255)
+        end
+        DrawBubble(x, y, w, h, -1, 0, 0)
+        SetColor(0,0,0,255)
+        DrawTextBoxAligned(text, 20, x, y, w, h, 0.5, 0.5)
+        return activated
+    end
+    if button(-10, h-40, 100, 45, "<") then
+        SetCurrentStepIndex(math.max(0, currentStep - 1))
+    end
+    if button(w-90, h-40, 100, 45, ">") then
+        SetCurrentStepIndex(math.min(chapters[#chapters].chapterOffset + chapters[#chapters].stepsInChapter - 1, currentStep + 1))
     end
 end

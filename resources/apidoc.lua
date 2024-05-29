@@ -79,3 +79,11 @@ function IsNumberKeyPressed(number) return false end
 
 function BeginScissorMode(x, y, w, h) end
 function EndScissorMode() end
+
+
+---@param x integer
+---@param y integer
+---@param w integer
+---@param h integer
+---@return "activated"|"pressed"|"hover"|"unknown"|nil
+function GetInputAreaStatus(x,y,w,h) return "activated" end
