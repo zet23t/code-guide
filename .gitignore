@@ -1,3 +1,5 @@
 .vscode
 *.o
 raylib_game.*
+index.html
+*.zip

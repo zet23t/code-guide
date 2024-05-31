@@ -365,12 +365,16 @@ static void TouchPoint_update()
     }
     
 
-    // the following code is trying to fix an issue that I have no idea where it is supposed to
-    // be fixed. When the canvas in the web version is resized, the mouse position is wrong.
-    // This code tries to fix it by calculating the correct mouse position based on the canvas size.
-    // The issue is that the current screen width / height is resized with an aspect ratio preservation
-    // and centering it. The effect is that the coordinates are a mess since this transformation
-    // happens only visually but not for coordinates. I believe this is a bug in raylib or emscripten.
+    // Due to my (bad) decision of relying on the canvas to scale the app, various
+    // coordinate transformations must be applied to convert the mouse & touch positions
+    // to the coordinate system that the app is using.
+    // The issue is that the canvas scales the rendering to fit the screen (canvas) while 
+    // preserving the aspect ratio (great), but the event API that is exposed by the 
+    // browser / emscripten / raylib (no idea who's fault it truly is, probably mine even
+    // considering this mode of running it) does not know of this scaling and is thus wrong.
+    // So to revert this mess, this code takes the supposed resolution, the actual resolution
+    // and the resolution that is the result of the aspect ratio preserving scaling and
+    // calculates the correct position of the mouse and touch events.
     float screenWidth = GetScreenWidth();
     float screenHeight = GetScreenHeight();
 #if PLATFORM_WEB
@@ -401,6 +405,13 @@ static void TouchPoint_update()
         scaleY = screenHeight / 450.0f;
         offsetY = (screenHeight - effectiveScreenHeight) / 2.0f;
     }
+
+    effectiveScreenWidth = 800.0f;
+    effectiveScreenHeight = 450.0f;
+    offsetX = 0.0f;
+    offsetY = 0.0f;
+    scaleX = 1.0f;
+    scaleY = 1.0f;
 
     // TraceLog(LOG_INFO, "scale %.3f %.3f (%f %f / %f %f) -> %.2f %.2f m[%f, %f]-> %f,%f", 
     //     scaleX, scaleY, screenWidth, screenHeight, effectiveScreenWidth, effectiveScreenHeight, 
@@ -590,7 +601,10 @@ int main(void)
     //--------------------------------------------------------------------------------------
     const int screenWidth = 800;
     const int screenHeight = 450;
-
+    
+    // this is the setting I should have used from the start but it's now complicated
+    // to retrofit the existing code to work with this setting
+    // SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(screenWidth, screenHeight, "Code Guide");
 
     SetTargetFPS(60);
