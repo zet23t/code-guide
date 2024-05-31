@@ -57,6 +57,20 @@
     <body>
         <canvas class=emscripten id=canvas oncontextmenu=event.preventDefault() tabindex=-1></canvas>
         <p id="output" />
+        <script type="text/javascript">
+        function requestFullScreen() {
+            var canvas = document.getElementById('canvas');
+            if (canvas.requestFullscreen) {
+                canvas.requestFullscreen();
+            } else if (canvas.mozRequestFullScreen) { // Firefox
+                canvas.mozRequestFullScreen();
+            } else if (canvas.webkitRequestFullscreen) { // Chrome, Safari and Opera
+                canvas.webkitRequestFullscreen();
+            } else if (canvas.msRequestFullscreen) { // IE/Edge
+                canvas.msRequestFullscreen();
+            }
+        }
+        </script>
         <script>
             var Module = {
                 print: (function() {
@@ -78,5 +92,6 @@
             };
         </script>
         {{{ SCRIPT }}}
+        <button onclick="requestFullScreen()">Fullscreen</button>
     </body>
 </html>

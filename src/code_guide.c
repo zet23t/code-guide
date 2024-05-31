@@ -351,6 +351,9 @@ static TouchPoint *TouchPoint_getById(int id)
 
     return NULL;
 }
+#if PLATFORM_WEB
+#include <emscripten.h>
+#endif
 
 static void TouchPoint_update()
 {
@@ -361,14 +364,54 @@ static void TouchPoint_update()
         _touchPoints[i].phase = 0;
     }
     
-    // for (int i=0;i<_touchPointCount;i++)
-    // {
-    //     TraceLog(LOG_INFO, "? touch[%d] %d: %d %d %d %d", i , _touchPoints[i].id, _touchPoints[i].phase, _touchPoints[i].previousPhase, (int)_touchPoints[i].position.x, (int)_touchPoints[i].position.y);
-    // }
+
+    // the following code is trying to fix an issue that I have no idea where it is supposed to
+    // be fixed. When the canvas in the web version is resized, the mouse position is wrong.
+    // This code tries to fix it by calculating the correct mouse position based on the canvas size.
+    // The issue is that the current screen width / height is resized with an aspect ratio preservation
+    // and centering it. The effect is that the coordinates are a mess since this transformation
+    // happens only visually but not for coordinates. I believe this is a bug in raylib or emscripten.
+    float screenWidth = GetScreenWidth();
+    float screenHeight = GetScreenHeight();
+#if PLATFORM_WEB
+    screenWidth = EM_ASM_INT({return Module.canvas.offsetWidth;}, 0);
+    screenHeight = EM_ASM_INT({return Module.canvas.offsetHeight;}, 0);
+#endif
+
+    float gameAspectRatio = 800.0f / 450.0f;
+    float screenAspectRatio = screenWidth / screenHeight;
+
+    float scaleX, scaleY, offsetX = 0.0f, offsetY = 0.0f;
+    Vector2 mousePos = GetMousePosition();
+    
+    float effectiveScreenWidth, effectiveScreenHeight;
+    if (screenAspectRatio > gameAspectRatio) {
+        // Black bars on left and right
+        // inputX / screenWidth * 800
+        effectiveScreenWidth = screenHeight * gameAspectRatio;
+        effectiveScreenHeight = GetScreenHeight();
+        scaleX = screenWidth / 800.0f;
+        scaleY = 1.0f;
+        offsetX = (screenWidth - effectiveScreenWidth) / 2.0f;
+    } else {
+        // Black bars on top and bottom
+        effectiveScreenWidth = GetScreenWidth();
+        effectiveScreenHeight = screenWidth / gameAspectRatio;
+        scaleX = 1.0f;
+        scaleY = screenHeight / 450.0f;
+        offsetY = (screenHeight - effectiveScreenHeight) / 2.0f;
+    }
+
+    // TraceLog(LOG_INFO, "scale %.3f %.3f (%f %f / %f %f) -> %.2f %.2f m[%f, %f]-> %f,%f", 
+    //     scaleX, scaleY, screenWidth, screenHeight, effectiveScreenWidth, effectiveScreenHeight, 
+    //     offsetX, offsetY, mousePos.x, mousePos.y, ((mousePos.x) * scaleX - offsetX) / effectiveScreenWidth * 800.0f, (mousePos.y * scaleY - offsetY) * 450.0f / effectiveScreenHeight);
+
     int touchCount = GetTouchPointCount();
     for (int i=0;i<touchCount;i++)
     {
         Vector2 pos = GetTouchPosition(i);
+        pos.x = (pos.x * scaleX - offsetX) * 800.0f / effectiveScreenWidth;
+        pos.y = (pos.y * scaleY - offsetY) * 450.0f / effectiveScreenHeight;
         int touchId = GetTouchPointId(i);
         TouchPoint *touch = TouchPoint_getById(touchId);
         if (touch == NULL)
@@ -389,19 +432,21 @@ static void TouchPoint_update()
     }
 
     TouchPoint *mouse = TouchPoint_getById(-123);
+    mousePos.x = (mousePos.x * scaleX - offsetX) * 800.0f / effectiveScreenWidth;
+    mousePos.y = (mousePos.y * scaleY - offsetY) * 450.0f / effectiveScreenHeight;
     if (mouse == NULL)
     {
         _touchPoints[_touchPointCount++] = (TouchPoint) {
             .id = -123,
             .phase = TOUCHPOINT_PHASE_HOVER,
-            .position = GetMousePosition(),
-            .previousPosition = GetMousePosition(),
-            .startPosition = GetMousePosition()
+            .position = mousePos,
+            .previousPosition = mousePos,
+            .startPosition = mousePos
         };
     }
     else
     {
-        mouse->position = GetMousePosition();
+        mouse->position = mousePos;
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
         {
             mouse->phase = TOUCHPOINT_PHASE_CONTACT;
